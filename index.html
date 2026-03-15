@@ -1,8 +1,14 @@
-
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>AAC 溝通板</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--primary:#3B6FD4;--primary-light:#E8EEFB;--danger:#E24B4A;--danger-light:#FCEBEB;--bg:#F7F8FA;--surface:#FFFFFF;--border:rgba(0,0,0,0.12);--border-md:rgba(0,0,0,0.22);--text:#1A1A1A;--text-muted:#666;--text-hint:#999;--radius:14px;--radius-sm:10px;--fs-label:15px;--card-img:112px;--card-emoji:62px;--card-min-h:170px;}
-.app{display:flex;flex-direction:column;min-height:700px;background:var(--bg)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg)}
+.app{display:flex;flex-direction:column;height:100vh;background:var(--bg)}
 .toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--surface);border-bottom:0.5px solid var(--border);flex-shrink:0;flex-wrap:wrap}
 .toolbar-left{display:flex;align-items:center;gap:8px;margin-right:auto}
 .board-title{font-size:20px;font-weight:500;color:var(--text);cursor:pointer;border-bottom:1.5px dashed transparent;padding-bottom:1px;transition:border-color 0.15s}
@@ -17,6 +23,8 @@
 .btn.primary:hover{background:#2e5ab8}
 .btn.ghost{border-color:var(--border);color:var(--text-muted)}
 .btn.ghost:hover{background:var(--bg);color:var(--text)}
+.btn.success{background:#3B9E75;color:#fff;border-color:#3B9E75}
+.btn.success:hover{background:#2d7d5c}
 .btn.danger-outline{border-color:var(--danger);color:var(--danger)}
 .btn.danger-outline:hover{background:var(--danger-light)}
 .fs-group{display:flex;border:0.5px solid var(--border-md);border-radius:var(--radius-sm);overflow:hidden}
@@ -83,8 +91,11 @@ body.edit-mode .drag-handle{display:block}
 .fname{font-size:13px;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .confirm-modal{background:var(--surface);border-radius:var(--radius);padding:24px;width:100%;max-width:340px}
 .confirm-modal p{font-size:15px;color:var(--text);margin-bottom:20px;line-height:1.6}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1A1A1A;color:#fff;padding:10px 20px;border-radius:20px;font-size:14px;z-index:200;opacity:0;transition:opacity 0.3s;pointer-events:none}
+.toast.show{opacity:1}
 </style>
-
+</head>
+<body>
 <div class="app" id="app">
   <div class="toolbar">
     <div class="toolbar-left">
@@ -102,6 +113,8 @@ body.edit-mode .drag-handle{display:block}
       <button class="fs-btn" onclick="setFontSize('xlarge',this)">特大</button>
     </div>
     <button class="btn ghost" id="btn-edit-mode">✎ 編輯模式</button>
+    <button class="btn success" id="btn-export">⬇ 匯出 JSON</button>
+    <button class="btn ghost" id="btn-import-wrap" onclick="document.getElementById('f-import').click()">⬆ 匯入 JSON<input type="file" id="f-import" accept=".json" style="display:none"></button>
     <button class="btn" id="btn-new-folder">＋ 新增資料夾</button>
     <button class="btn primary" id="btn-new-card">＋ 新增圖卡</button>
   </div>
@@ -175,245 +188,61 @@ body.edit-mode .drag-handle{display:block}
     </div>
   </div>
 </div>
+<div class="toast" id="toast"></div>
 
 <script>
 const DEFAULT_EMOJI='❓';
-const EMOJI_MAP=[
-  // 快速聊天
-  ['你好','👋'],['再見','👋'],['好','👍'],['不好','👎'],['我不會說話','🔇'],['謝謝','🙏'],['請','🙏'],['對','✅'],['不對','❌'],['是','✅'],['不是','❌'],['沒關係','🤗'],['好的','👌'],['不要','🙅'],['可以','🙆'],['幫我','🙋'],['我','🙋'],['你','👉'],['他','👤'],['我們','👥'],
-  // 時間
-  ['現在','⏰'],['昨天','📅'],['今天','📅'],['明天','📅'],['早上','🌅'],['下午','🌞'],['晚上','🌙'],['這星期','📆'],['下星期','📆'],['這個月','📆'],['下個月','📆'],['一小時','⏱️'],['分鐘','⏱️'],['秒','⏱️'],['時間','🕐'],['等一下','⏳'],['快一點','⚡'],['慢一點','🐢'],['之前','⬅️'],['之後','➡️'],['一起','🤝'],
-  // 食物句子
-  ['我餓了','🍽️'],['我想要吃','🍽️'],['吃飯','🍚'],['吃麵','🍜'],['喝湯','🍲'],['麵包','🍞'],['漢堡','🍔'],['義大利麵','🍝'],['三明治','🥪'],['雞蛋','🥚'],['鹹酥雞','🍗'],['雞排','🍗'],['炒飯','🍳'],['水餃','🥟'],['鍋貼','🥟'],['燒賣','🥟'],['豬排','🥩'],['牛排','🥩'],['魚排','🐟'],['滷肉飯','🍚'],['便當','🍱'],['泡麵','🍜'],['薯條','🍟'],['披薩','🍕'],['熱狗','🌭'],['餅乾','🍪'],['蛋糕','🎂'],
-  // 蔬菜
-  ['蔬菜','🥦'],['沙拉','🥗'],['高麗菜','🥬'],['紅蘿蔔','🥕'],['玉米','🌽'],['番茄','🍅'],['小黃瓜','🥒'],['地瓜葉','🌿'],['花椰菜','🥦'],['南瓜','🎃'],['茄子','🍆'],['菠菜','🥬'],['洋蔥','🧅'],['大蒜','🧄'],['青椒','🫑'],['豆芽','🌱'],['地瓜','🍠'],['芋頭','🍠'],
-  // 水果
-  ['蘋果','🍎'],['香蕉','🍌'],['鳳梨','🍍'],['草莓','🍓'],['西瓜','🍉'],['芭樂','🍐'],['葡萄','🍇'],['橘子','🍊'],['檸檬','🍋'],['桃子','🍑'],['梨子','🍐'],['芒果','🥭'],['椰子','🥥'],['藍莓','🫐'],['奇異果','🥝'],['木瓜','🍈'],['荔枝','🍒'],['龍眼','🍒'],
-  // 肉類海鮮
-  ['豬肉','🥩'],['雞肉','🍗'],['牛肉','🥩'],['海鮮','🦐'],['魚','🐟'],['蝦','🦐'],['螃蟹','🦀'],['花枝','🦑'],['章魚','🐙'],['牡蠣','🦪'],['蛤蜊','🦪'],['羊肉','🐑'],['鴨肉','🦆'],['培根','🥓'],['香腸','🌭'],
-  // 醬料
-  ['番茄醬','🍅'],['胡椒','🫙'],['醬油','🫙'],['鹽巴','🧂'],['砂糖','🍬'],['辣醬','🌶️'],['沙拉醬','🥗'],['奶油','🧈'],['醋','🫙'],['味噌','🍲'],
-  // 飲料
-  ['我口渴','🥤'],['我想喝','🥤'],['可樂','🥤'],['咖啡','☕'],['果汁','🧃'],['奶茶','🧋'],['珍珠','🧋'],['珍珠奶茶','🧋'],['綠茶','🍵'],['紅茶','🍵'],['豆漿','🥛'],['牛奶','🥛'],['開水','💧'],['水','💧'],['熱的','🔥'],['冰的','🧊'],['溫的','♨️'],['啤酒','🍺'],['紅酒','🍷'],['果昔','🥤'],
-  // 活動
-  ['我想要','🙋'],['騎腳踏車','🚴'],['打籃球','🏀'],['看電視','📺'],['去散步','🚶'],['去打牌','🃏'],['玩玩具','🪀'],['看書','📖'],['聽音樂','🎵'],['畫畫','🎨'],['唱歌','🎤'],['跳舞','💃'],['玩遊戲','🎮'],['運動','🏃'],['游泳','🏊'],['爬山','🧗'],['打球','⚽'],['釣魚','🎣'],['打電動','🕹️'],
-  // 情緒句子
-  ['我覺得','💭'],['你覺得','💭'],['你是不是','🤔'],['很快樂','😄'],['很難過','😢'],['很傷心','😭'],['很生氣','😡'],['很害羞','😳'],['很興奮','🤩'],['很開心','😊'],['很累','😴'],['很無聊','😑'],['很緊張','😰'],['很害怕','😨'],['很驚訝','😲'],['很委屈','😥'],['很期待','😆'],['不舒服','🤒'],['不開心','😔'],
-  // 情緒詞
-  ['開心','😊'],['快樂','😄'],['笑','😁'],['高興','😄'],['哈哈','😂'],['感動','🥹'],['微笑','🙂'],['愛心眼','😍'],['星星眼','🤩'],['傻笑','😛'],['調皮','😝'],['思考','🤔'],['噓','🤫'],['無表情','😐'],['冷漠','😑'],['滾眼','🙄'],['疑惑','😕'],['皺眉','☹️'],['難過','😢'],['哭','😭'],['傷心','😢'],['委屈','😥'],['擔心','😟'],['害怕','😨'],['恐懼','😱'],['驚訝','😲'],['震驚','😳'],['生氣','😡'],['憤怒','😠'],['累','😴'],['疲倦','😪'],['睏','😪'],['病','🤒'],['發燒','🤒'],['受傷','🤕'],['噁心','🤢'],['冷','🥶'],['熱','🥵'],['暈','😵'],['焦慮','😰'],['興奮','🤩'],['無聊','😑'],['討厭','😒'],['尷尬','😅'],['喜歡','😍'],
-  // 身體感覺
-  ['痛','🤕'],['很痛','🤕'],['有點痛','🤕'],['癢','🤧'],['頭','🤕'],['喉嚨','🤧'],['肩膀','💪'],['肚子','🤢'],['腰','🧍'],['手','🤚'],['腳','🦶'],['背部','🧍'],['胸口','💔'],['頭暈','😵'],['頭痛','🤕'],['肚子痛','🤢'],['肚子餓','🍽️'],['手痛','🤕'],['腳痛','🤕'],['喉嚨痛','🤧'],['咳嗽','🤧'],['流鼻水','🤧'],
-  // 面部
-  ['眼睛','👁️'],['鼻子','👃'],['嘴巴','👄'],['舌頭','👅'],['牙齒','🦷'],['耳朵','👂'],['臉','😊'],['頭髮','💇'],['眉毛','🤨'],
-  // 人物
-  ['爸爸','👨'],['媽媽','👩'],['阿嬤','👵'],['阿公','👴'],['阿姨','👩'],['老師','👩‍🏫'],['醫生','👨‍⚕️'],['護理師','👩‍⚕️'],['護士','👩‍⚕️'],['兒子','👦'],['女兒','👧'],['小孩','🧒'],['姊姊','👧'],['哥哥','👦'],['弟弟','👦'],['妹妹','👧'],['朋友','👫'],['同學','👫'],['嬰兒','👶'],['校長','👨‍💼'],['爺爺','👴'],['奶奶','👵'],['叔叔','👨'],['舅舅','👨'],['姑姑','👩'],['外婆','👵'],['外公','👴'],['警察','👮'],['消防員','👨‍🚒'],['廚師','👨‍🍳'],
-  // 描述詞
-  ['我是','🙋'],['你是','👉'],['他是','👤'],['高的','📏'],['矮的','📏'],['胖的','🫀'],['瘦的','🩻'],['漂亮的','✨'],['大的','🔲'],['小的','🔳'],['長的','📏'],['短的','📏'],['安靜的','🤫'],['吵鬧的','📢'],['新的','🆕'],['舊的','♻️'],['快的','⚡'],['慢的','🐢'],['多的','➕'],['少的','➖'],['乾淨的','✨'],['冷的','🥶'],['熱的','🥵'],
-  // 顏色
-  ['紅色','🔴'],['黃色','🟡'],['藍色','🔵'],['綠色','🟢'],['橘色','🟠'],['紫色','🟣'],['白色','⚪'],['黑色','⚫'],['粉紅色','🩷'],['咖啡色','🟤'],['灰色','🩶'],['金色','🌟'],
-  // 形狀
-  ['圓形','⭕'],['正方形','🟦'],['愛心形狀','❤️'],['星形','⭐'],['三角形','🔺'],['菱形','🔷'],
-  // 天氣
-  ['太陽','☀️'],['下雨','🌧️'],['陰天','☁️'],['打雷','⛈️'],['閃電','⚡'],['春天','🌸'],['夏天','☀️'],['秋天','🍂'],['冬天','❄️'],['颱風','🌀'],['下雪','❄️'],['霧','🌫️'],['彩虹','🌈'],['溫暖','🌤️'],['涼爽','🍃'],['悶熱','🥵'],['晴天','☀️'],
-  // 交通
-  ['汽車','🚗'],['車','🚗'],['火車','🚂'],['機車','🛵'],['公車','🚌'],['船','🚢'],['輪椅','♿'],['腳踏車','🚲'],['巴士','🚌'],['飛機','✈️'],['捷運','🚇'],['高鐵','🚄'],['計程車','🚕'],['救護車','🚑'],['警車','🚓'],['消防車','🚒'],['卡車','🚛'],
-  // 動作句子
-  ['我要','🙋'],['拿','✋'],['放','🫳'],['聽','👂'],['去','🚶'],['等','⏳'],['看','👀'],['給','🤲'],['坐下','🪑'],['站著','🧍'],['移動','🚶'],['出門','🚪'],['回家','🏠'],['進來','🚪'],['出去','🚪'],['開','🔓'],['關','🔒'],['推','🤜'],['拉','🫷'],['搬','📦'],['拍','👏'],['寫','✏️'],['讀','📖'],['說','💬'],['做','🛠️'],
-  // 問題詞
-  ['什麼','❓'],['為什麼','🤔'],['什麼時候','🕐'],['多少','🔢'],['哪一個','👆'],['哪裡','📍'],['誰','👤'],['怎麼','💭'],
-  // 場所
-  ['家裡','🏠'],['學校','🏫'],['醫院','🏥'],['餐廳','🍽️'],['超商','🏪'],['公園','🌳'],['便利商店','🏪'],['圖書館','📚'],['教室','🏫'],['廚房','🍳'],['浴室','🚿'],['廁所','🚽'],['臥室','🛏️'],['客廳','🛋️'],['公司','🏢'],['捷運站','🚇'],['車站','🚉'],['機場','✈️'],['海邊','🏖️'],['山上','⛰️'],['操場','⚽'],['體育館','🏅'],['診所','🏥'],['藥局','💊'],
-  // 手勢
-  ['ok','👌'],['OK','👌'],['ok手勢','👌'],['比讚','👍'],['讚','👍'],['棒','👍'],['同意','👍'],['倒讚','👎'],['招手','👋'],['舉手','✋'],['停','✋'],['手掌','🤚'],['拳頭','✊'],['加油','✊'],['剪刀','✌️'],['勝利','✌️'],['比一','☝️'],['注意','☝️'],['雙手合十','🙏'],['鼓掌','👏'],['拍手','👏'],['抱抱','🤗'],['捏手指','🤏'],['交叉手指','🤞'],['希望','🤞'],['愛你','🤟'],['打電話手勢','🤙'],['握手','🤝'],['合作','🤝'],['點頭','🙆'],['搖頭','🙅'],['舉雙手','🙋'],['摀嘴','🤭'],['臉掌','🤦'],['傻眼','🤦'],['聳肩','🤷'],['不知道','🤷'],['彎腰','🙇'],['對不起','🙇'],['道歉','🙇'],['抱歉','🙇'],
-  // 身體動作
-  ['走路','🚶'],['走','🚶'],['跑步','🏃'],['跑','🏃'],['跳躍','🤸'],['站立','🧍'],['站','🧍'],['騎車','🚴'],['舉重','🏋️'],['瑜伽','🧘'],['冥想','🧘'],['跳舞','💃'],['舞蹈','🕺'],['爬山','🧗'],['滑雪','⛷️'],['溜冰','⛸️'],['衝浪','🏄'],['睡覺','😴'],['睡','🛏️'],['洗手','🧼'],['洗澡','🚿'],['刷牙','🪥'],['穿衣服','👕'],['坐','🪑'],['躺','🛏️'],
-  // 活動慶祝
-  ['生日','🎂'],['慶祝','🎉'],['派對','🎊'],['禮物','🎁'],['氣球','🎈'],['煙火','🎆'],['新年','🎆'],['聖誕節','🎄'],['萬聖節','🎃'],['野餐','🧺'],['露營','⛺'],['旅遊','✈️'],['度假','🏖️'],['攝影','📷'],
-  // 動物
-  ['狗','🐶'],['貓','🐱'],['老鼠','🐭'],['兔子','🐰'],['狐狸','🦊'],['熊','🐻'],['貓熊','🐼'],['無尾熊','🐨'],['老虎','🐯'],['獅子','🦁'],['牛','🐄'],['豬','🐷'],['羊','🐑'],['馬','🐴'],['獨角獸','🦄'],['雞','🐔'],['企鵝','🐧'],['鳥','🐦'],['鴨子','🦆'],['老鷹','🦅'],['貓頭鷹','🦉'],['青蛙','🐸'],['蛇','🐍'],['恐龍','🦕'],['烏龜','🐢'],['鯨魚','🐋'],['海豚','🐬'],['鯊魚','🦈'],['蝸牛','🐌'],['蝴蝶','🦋'],['蜜蜂','🐝'],['大象','🐘'],['長頸鹿','🦒'],['斑馬','🦓'],['猴子','🐒'],
-  // 自然
-  ['月亮','🌙'],['星星','⭐'],['花','🌸'],['玫瑰','🌹'],['向日葵','🌻'],['樹','🌳'],['仙人掌','🌵'],['草','🌿'],['葉子','🍃'],['楓葉','🍁'],['山','⛰️'],['火山','🌋'],['海灘','🏖️'],['森林','🌲'],['地球','🌍'],['日出','🌅'],['火','🔥'],['波浪','🌊'],['冰','🧊'],
-  // 愛心符號
-  ['愛心','❤️'],['紅心','❤️'],['愛','❤️'],['粉紅心','🩷'],['橘心','🧡'],['黃心','💛'],['綠心','💚'],['藍心','💙'],['紫心','💜'],['黑心','🖤'],['白心','🤍'],['破碎的心','💔'],['心跳','💓'],['愛意','💕'],['閃亮','✨'],['火花','💥'],['音符','🎵'],['音樂','🎶'],['對話框','💬'],['想法','💭'],['禁止','🚫'],['打勾','✅'],['打叉','❌'],['警告','⚠️'],['緊急','🆘'],
-  // 物品
-  ['書包','🎒'],['書','📚'],['課本','📖'],['鉛筆','✏️'],['剪刀','✂️'],['作業','📝'],['手機','📱'],['電腦','💻'],['平板','📱'],['相機','📷'],['耳機','🎧'],['藥','💊'],['針筒','💉'],['OK繃','🩹'],['面紙','🧻'],['肥皂','🧼'],['牙刷','🪥'],['衣服','👕'],['褲子','👖'],['裙子','👗'],['鞋子','👟'],['帽子','🧢'],['眼鏡','👓'],['外套','🧥'],['雨傘','☂️'],['錢','💰'],['鑰匙','🔑'],['燈','💡'],['時鐘','🕐'],['鬧鐘','⏰'],
-  // 運動
-  ['足球','⚽'],['籃球','🏀'],['棒球','⚾'],['網球','🎾'],['羽毛球','🏸'],['桌球','🏓'],['排球','🏐'],['武術','🥋'],['拳擊','🥊'],['比賽','🏆'],['獎盃','🏆'],['冠軍','🥇'],
-  // 資料夾類別
-  ['食物','🍽️'],['飲料','🥤'],['情緒','😊'],['感受','💭'],['動作','🏃'],['需求','🙋'],['健康','💊'],['交通','🚗'],['自然','🌿'],['動物','🐾'],['手勢','👌'],['慶祝','🎉'],['運動','🏅'],['重要','⭐'],['時間','⏰'],['人物','👤'],['描述','💬'],['天氣','☀️'],['形狀','🔷'],['顏色','🎨'],['場所','📍'],['問題','❓'],['蔬菜','🥦'],['水果','🍎'],['肉類','🥩'],['醬料','🫙'],
-  // 其他常用
-  ['繼續','▶️'],['開始','▶️'],['停止','🛑'],['結束','🔚'],['幫忙','🙏'],['結束','🔚'],['上廁所','🚽'],['洗澡','🚿'],['吃','🍽️'],['喝','🥤'],
-];
-
-function lookupEmoji(input){
-  if(!input||!input.trim())return DEFAULT_EMOJI;
-  const q=input.trim();
-  for(const[w,e]of EMOJI_MAP){if(w===q)return e;}
-  for(const[w,e]of EMOJI_MAP){if(q.includes(w)||w.includes(q))return e;}
-  let best=null,bestScore=0;
-  for(const[w,e]of EMOJI_MAP){let s=0;for(const ch of q){if(w.includes(ch))s++;}if(s>bestScore){bestScore=s;best=e;}}
-  return bestScore>0?best:DEFAULT_EMOJI;
-}
-
+const EMOJI_MAP=[['你好','👋'],['再見','👋'],['好','👍'],['不好','👎'],['我不會說話','🔇'],['謝謝','🙏'],['請','🙏'],['對','✅'],['不對','❌'],['是','✅'],['不是','❌'],['沒關係','🤗'],['好的','👌'],['不要','🙅'],['可以','🙆'],['幫我','🙋'],['我','🙋'],['你','👉'],['他','👤'],['我們','👥'],['現在','⏰'],['昨天','📅'],['今天','📅'],['明天','📅'],['早上','🌅'],['中午','🌞'],['下午','🌞'],['晚上','🌙'],['這星期','📆'],['下星期','📆'],['這個月','📆'],['下個月','📆'],['一小時','⏱️'],['分鐘','⏱️'],['秒','⏱️'],['時間','🕐'],['等一下','⏳'],['快一點','⚡'],['慢一點','🐢'],['幾點','🕐'],['我要','🙋'],['吃飯','🍚'],['吃麵','🍜'],['喝湯','🍲'],['麵包','🍞'],['漢堡','🍔'],['義大利麵','🍝'],['三明治','🥪'],['雞蛋','🥚'],['鹹酥雞','🍗'],['雞排','🍗'],['炒飯','🍳'],['水餃','🥟'],['便當','🍱'],['泡麵','🍜'],['薯條','🍟'],['披薩','🍕'],['熱狗','🌭'],['餅乾','🍪'],['蛋糕','🎂'],['鹽巴','🧂'],['可樂','🥤'],['咖啡','☕'],['蔬菜','🥦'],['沙拉','🥗'],['高麗菜','🥬'],['紅蘿蔔','🥕'],['玉米','🌽'],['番茄','🍅'],['小黃瓜','🥒'],['地瓜葉','🌿'],['花椰菜','🥦'],['南瓜','🎃'],['茄子','🍆'],['菠菜','🥬'],['洋蔥','🧅'],['大蒜','🧄'],['蒜','🧄'],['青椒','🫑'],['地瓜','🍠'],['蘋果','🍎'],['香蕉','🍌'],['鳳梨','🍍'],['草莓','🍓'],['西瓜','🍉'],['水蜜桃','🍑'],['芭樂','🍐'],['葡萄','🍇'],['橘子','🍊'],['檸檬','🍋'],['桃子','🍑'],['梨子','🍐'],['芒果','🥭'],['椰子','🥥'],['藍莓','🫐'],['奇異果','🥝'],['荔枝','🍒'],['豬肉','🥩'],['雞肉','🍗'],['牛肉','🥩'],['海鮮','🦐'],['魚','🐟'],['蝦','🦐'],['螃蟹','🦀'],['羊肉','🐑'],['培根','🥓'],['我口渴','🥤'],['我想喝','🥤'],['果汁','🧃'],['奶茶','🧋'],['珍珠','🧋'],['珍珠奶茶','🧋'],['綠茶','🍵'],['紅茶','🍵'],['豆漿','🥛'],['牛奶','🥛'],['開水','💧'],['水','💧'],['熱的','🔥'],['冰的','🧊'],['啤酒','🍺'],['我想要','🙋'],['騎腳踏車','🚴'],['打籃球','🏀'],['踢足球','⚽'],['看電視','📺'],['去散步','🚶'],['去打牌','🃏'],['玩玩具','🪀'],['看書','📖'],['聽音樂','🎵'],['畫畫','🎨'],['唱歌','🎤'],['跳舞','💃'],['玩遊戲','🎮'],['去運動','🏃'],['游泳','🏊'],['爬山','🧗'],['釣魚','🎣'],['我覺得','💭'],['你覺得','💭'],['很快樂','😄'],['很難過','😢'],['很傷心','😭'],['很生氣','😡'],['很害羞','😳'],['很興奮','🤩'],['很開心','😊'],['很累','😴'],['很無聊','😑'],['很緊張','😰'],['很害怕','😨'],['很驚訝','😲'],['很委屈','😥'],['不舒服','🤒'],['不開心','😔'],['開心','😊'],['快樂','😄'],['笑','😁'],['哭','😭'],['傷心','😢'],['委屈','😥'],['擔心','😟'],['害怕','😨'],['驚訝','😲'],['生氣','😡'],['累','😴'],['疲倦','😪'],['發燒','🤒'],['受傷','🤕'],['噁心','🤢'],['冷','🥶'],['熱','🥵'],['痛','🤕'],['很痛','🤕'],['有點痛','🤕'],['很癢','🤧'],['癢','🤧'],['頭','🤕'],['喉嚨','🤧'],['肩膀','💪'],['肚子','🤢'],['腰','🧍'],['手','🤚'],['腳','🦶'],['背部','🧍'],['頭痛','🤕'],['肚子痛','🤢'],['肚子餓','🍽️'],['喉嚨痛','🤧'],['咳嗽','🤧'],['流鼻水','🤧'],['眼睛','👁️'],['鼻子','👃'],['嘴巴','👄'],['舌頭','👅'],['牙齒','🦷'],['耳朵','👂'],['爸爸','👨'],['媽媽','👩'],['阿嬤','👵'],['阿公','👴'],['阿姨','👩'],['老師','👩‍🏫'],['醫生','👨‍⚕️'],['護理師','👩‍⚕️'],['護士','👩‍⚕️'],['兒子','👦'],['女兒','👧'],['小孩','🧒'],['姊姊','👧'],['哥哥','👦'],['弟弟','👦'],['妹妹','👧'],['朋友','👫'],['同學','👫'],['嬰兒','👶'],['爺爺','👴'],['奶奶','👵'],['警察','👮'],['消防員','👨‍🚒'],['廚師','👨‍🍳'],['我是','🙋'],['你是','👉'],['他是','👤'],['高的','📏'],['矮的','📏'],['漂亮的','✨'],['大的','🔲'],['小的','🔳'],['長的','📏'],['短的','📏'],['安靜的','🤫'],['吵鬧的','📢'],['新的','🆕'],['舊的','♻️'],['快的','⚡'],['慢的','🐢'],['紅色','🔴'],['黃色','🟡'],['藍色','🔵'],['綠色','🟢'],['橘色','🟠'],['紫色','🟣'],['白色','⚪'],['黑色','⚫'],['粉紅色','🩷'],['咖啡色','🟤'],['灰色','🩶'],['金色','🌟'],['圓形','⭕'],['正方形','🟦'],['愛心','❤️'],['星星','⭐'],['三角形','🔺'],['菱形','🔷'],['太陽','☀️'],['下雨','🌧️'],['陰天','☁️'],['打雷','⛈️'],['閃電','⚡'],['春天','🌸'],['夏天','☀️'],['秋天','🍂'],['冬天','❄️'],['颱風','🌀'],['下雪','❄️'],['彩虹','🌈'],['晴天','☀️'],['汽車','🚗'],['車','🚗'],['火車','🚂'],['機車','🛵'],['公車','🚌'],['船','🚢'],['輪椅','♿'],['腳踏車','🚲'],['巴士','🚌'],['飛機','✈️'],['捷運','🚇'],['高鐵','🚄'],['計程車','🚕'],['救護車','🚑'],['我要','🙋'],['拿','✋'],['放','🫳'],['聽','👂'],['去','🚶'],['等','⏳'],['看','👀'],['給','🤲'],['坐下','🪑'],['站著','🧍'],['移動','🚶'],['出門','🚪'],['回家','🏠'],['什麼','❓'],['為什麼','🤔'],['什麼時候','🕐'],['多少','🔢'],['哪一個','👆'],['哪裡','📍'],['誰','👤'],['怎麼','💭'],['家裡','🏠'],['學校','🏫'],['醫院','🏥'],['餐廳','🍽️'],['超商','🏪'],['公園','🌳'],['便利商店','🏪'],['圖書館','📚'],['廁所','🚽'],['ok','👌'],['OK','👌'],['讚','👍'],['棒','👍'],['同意','👍'],['招手','👋'],['舉手','✋'],['停','✋'],['停止','🛑'],['謝謝','🙏'],['拜託','🙏'],['鼓掌','👏'],['拍手','👏'],['抱抱','🤗'],['希望','🤞'],['愛你','🤟'],['握手','🤝'],['點頭','🙆'],['搖頭','🙅'],['聳肩','🤷'],['不知道','🤷'],['對不起','🙇'],['道歉','🙇'],['抱歉','🙇'],['走路','🚶'],['跑步','🏃'],['睡覺','😴'],['洗手','🧼'],['洗澡','🚿'],['刷牙','🪥'],['穿衣服','👕'],['坐','🪑'],['生日','🎂'],['慶祝','🎉'],['禮物','🎁'],['氣球','🎈'],['新年','🎆'],['聖誕節','🎄'],['狗','🐶'],['貓','🐱'],['兔子','🐰'],['熊','🐻'],['豬','🐷'],['牛','🐄'],['馬','🐴'],['雞','🐔'],['羊','🐑'],['老虎','🐯'],['獅子','🦁'],['大象','🐘'],['月亮','🌙'],['花','🌸'],['樹','🌳'],['草','🌿'],['愛心','❤️'],['書包','🎒'],['書','📚'],['鉛筆','✏️'],['手機','📱'],['電腦','💻'],['藥','💊'],['面紙','🧻'],['肥皂','🧼'],['衣服','👕'],['褲子','👖'],['鞋子','👟'],['帽子','🧢'],['眼鏡','👓'],['錢','💰'],['鑰匙','🔑'],['燈','💡'],['足球','⚽'],['籃球','🏀'],['棒球','⚾'],['羽毛球','🏸'],['桌球','🏓'],['我聽得到','👂'],['拿','✋'],['給','🤲'],];
+function lookupEmoji(input){if(!input||!input.trim())return DEFAULT_EMOJI;const q=input.trim();for(const[w,e]of EMOJI_MAP){if(w===q)return e;}for(const[w,e]of EMOJI_MAP){if(q.includes(w)||w.includes(q))return e;}let best=null,bestScore=0;for(const[w,e]of EMOJI_MAP){let s=0;for(const ch of q){if(w.includes(ch))s++;}if(s>bestScore){bestScore=s;best=e;}}return bestScore>0?best:DEFAULT_EMOJI;}
 const FOLDER_COLORS=['#FFD6D6','#FFE4C4','#FFF3B0','#D4F1C4','#C4E8FF','#D6D0FF','#FFD6F0','#E0E0E0','#FF9999','#FFB366','#FFE566','#80D080','#66B8FF','#9980FF','#FF80CC','#AAAAAA'];
 const FS_MAP={normal:{label:'15px',img:'112px',emoji:'62px',minh:'170px'},large:{label:'18px',img:'128px',emoji:'74px',minh:'195px'},xlarge:{label:'22px',img:'148px',emoji:'88px',minh:'225px'}};
 let editMode=false,deleteTargetId=null,selectedColor=FOLDER_COLORS[4],dragSrcId=null;
-let state={
-  path:[],boardTitle:'AAC 溝通板',
-  tree:{id:'root',type:'folder',label:'根目錄',children:[
-    {id:'f1',type:'folder',label:'快速聊天',emoji:'👋',imgData:null,color:'#C4E8FF',children:[
-      {id:'c1',type:'card',label:'你好',emoji:'👋',audio:null,imgData:null},
-      {id:'c2',type:'card',label:'謝謝',emoji:'🙏',audio:null,imgData:null},
-      {id:'c3',type:'card',label:'好',emoji:'👍',audio:null,imgData:null},
-      {id:'c4',type:'card',label:'不好',emoji:'👎',audio:null,imgData:null},
-      {id:'c5',type:'card',label:'再見',emoji:'👋',audio:null,imgData:null},
-      {id:'c6',type:'card',label:'請',emoji:'🙏',audio:null,imgData:null},
-    ]},
-    {id:'f2',type:'folder',label:'情緒',emoji:'😊',imgData:null,color:'#FFD6D6',children:[
-      {id:'c7',type:'card',label:'很開心',emoji:'😄',audio:null,imgData:null},
-      {id:'c8',type:'card',label:'很難過',emoji:'😢',audio:null,imgData:null},
-      {id:'c9',type:'card',label:'很生氣',emoji:'😡',audio:null,imgData:null},
-      {id:'c10',type:'card',label:'很害怕',emoji:'😨',audio:null,imgData:null},
-      {id:'c11',type:'card',label:'很興奮',emoji:'🤩',audio:null,imgData:null},
-      {id:'c12',type:'card',label:'很害羞',emoji:'😳',audio:null,imgData:null},
-    ]},
-    {id:'f3',type:'folder',label:'食物',emoji:'🍽️',imgData:null,color:'#FFE4C4',children:[
-      {id:'c13',type:'card',label:'我餓了',emoji:'🍽️',audio:null,imgData:null},
-      {id:'c14',type:'card',label:'吃飯',emoji:'🍚',audio:null,imgData:null},
-      {id:'c15',type:'card',label:'吃麵',emoji:'🍜',audio:null,imgData:null},
-      {id:'c16',type:'card',label:'雞排',emoji:'🍗',audio:null,imgData:null},
-      {id:'c17',type:'card',label:'漢堡',emoji:'🍔',audio:null,imgData:null},
-    ]},
-    {id:'f4',type:'folder',label:'手勢',emoji:'👌',imgData:null,color:'#FFF3B0',children:[
-      {id:'c18',type:'card',label:'OK',emoji:'👌',audio:null,imgData:null},
-      {id:'c19',type:'card',label:'讚',emoji:'👍',audio:null,imgData:null},
-      {id:'c20',type:'card',label:'不要',emoji:'🙅',audio:null,imgData:null},
-      {id:'c21',type:'card',label:'謝謝',emoji:'🙏',audio:null,imgData:null},
-      {id:'c22',type:'card',label:'對不起',emoji:'🙇',audio:null,imgData:null},
-      {id:'c23',type:'card',label:'不知道',emoji:'🤷',audio:null,imgData:null},
-    ]},
-    {id:'f5',type:'folder',label:'身體感覺',emoji:'🤕',imgData:null,color:'#D6D0FF',children:[
-      {id:'c24',type:'card',label:'頭痛',emoji:'🤕',audio:null,imgData:null},
-      {id:'c25',type:'card',label:'肚子痛',emoji:'🤢',audio:null,imgData:null},
-      {id:'c26',type:'card',label:'喉嚨痛',emoji:'🤧',audio:null,imgData:null},
-      {id:'c27',type:'card',label:'發燒',emoji:'🤒',audio:null,imgData:null},
-      {id:'c28',type:'card',label:'很痛',emoji:'🤕',audio:null,imgData:null},
-      {id:'c29',type:'card',label:'不舒服',emoji:'🤒',audio:null,imgData:null},
-    ]},
-  ]},
-  sentence:[],editTarget:null,modalMode:null,tempAudio:null,tempImg:null,tempEmoji:DEFAULT_EMOJI,
-};
-
+const DEFAULT_TREE={"id": "root", "type": "folder", "label": "根目錄", "children": [{"id": "home_yes", "type": "card", "label": "是", "emoji": "✅", "audio": null, "imgData": null}, {"id": "home_no", "type": "card", "label": "不是", "emoji": "❌", "audio": null, "imgData": null}, {"id": "f1", "type": "folder", "label": "社交常用語", "emoji": "👋", "imgData": null, "color": "#C4E8FF", "children": [{"id": "f1_你好", "type": "card", "label": "你好", "emoji": "👋", "audio": null, "imgData": null}, {"id": "f1_ok", "type": "card", "label": "ok", "emoji": "👌", "audio": null, "imgData": null}, {"id": "f1_不好", "type": "card", "label": "不好", "emoji": "👎", "audio": null, "imgData": null}, {"id": "f1_不知道", "type": "card", "label": "不知道", "emoji": "🤷", "audio": null, "imgData": null}, {"id": "f1_我不會說話", "type": "card", "label": "我不會說話", "emoji": "🔇", "audio": null, "imgData": null}, {"id": "f1_謝謝", "type": "card", "label": "謝謝", "emoji": "🙏", "audio": null, "imgData": null}, {"id": "f1_拿", "type": "card", "label": "拿", "emoji": "✋", "audio": null, "imgData": null}, {"id": "f1_給", "type": "card", "label": "給", "emoji": "🤲", "audio": null, "imgData": null}, {"id": "f1_對不起", "type": "card", "label": "對不起", "emoji": "🙇", "audio": null, "imgData": null}, {"id": "f1_我聽得到", "type": "card", "label": "我聽得到", "emoji": "👂", "audio": null, "imgData": null}, {"id": "f1_多少", "type": "card", "label": "多少", "emoji": "🔢", "audio": null, "imgData": null}, {"id": "f1_哪一個", "type": "card", "label": "哪一個", "emoji": "👆", "audio": null, "imgData": null}, {"id": "f1_幾點", "type": "card", "label": "幾點", "emoji": "🕐", "audio": null, "imgData": null}]}, {"id": "f2", "type": "folder", "label": "食物", "emoji": "🍽️", "imgData": null, "color": "#FFE4C4", "children": [{"id": "f2_我要", "type": "card", "label": "我要", "emoji": "🙋", "audio": null, "imgData": null}, {"id": "f2_吃飯", "type": "card", "label": "吃飯", "emoji": "🍚", "audio": null, "imgData": null}, {"id": "f2_吃麵", "type": "card", "label": "吃麵", "emoji": "🍜", "audio": null, "imgData": null}, {"id": "f2_喝湯", "type": "card", "label": "喝湯", "emoji": "🍲", "audio": null, "imgData": null}, {"id": "f2_麵包", "type": "card", "label": "麵包", "emoji": "🍞", "audio": null, "imgData": null}, {"id": "f2_漢堡", "type": "card", "label": "漢堡", "emoji": "🍔", "audio": null, "imgData": null}, {"id": "f2_義大利麵", "type": "card", "label": "義大利麵", "emoji": "🍝", "audio": null, "imgData": null}, {"id": "f2_三明治", "type": "card", "label": "三明治", "emoji": "🥪", "audio": null, "imgData": null}, {"id": "f2_雞蛋", "type": "card", "label": "雞蛋", "emoji": "🥚", "audio": null, "imgData": null}, {"id": "f2_披薩", "type": "card", "label": "披薩", "emoji": "🍕", "audio": null, "imgData": null}, {"id": "f2_薯條", "type": "card", "label": "薯條", "emoji": "🍟", "audio": null, "imgData": null}, {"id": "f2_熱狗", "type": "card", "label": "熱狗", "emoji": "🌭", "audio": null, "imgData": null}, {"id": "f2_鹽巴", "type": "card", "label": "鹽巴", "emoji": "🧂", "audio": null, "imgData": null}, {"id": "f2_可樂", "type": "card", "label": "可樂", "emoji": "🥤", "audio": null, "imgData": null}, {"id": "f2_咖啡", "type": "card", "label": "咖啡", "emoji": "☕", "audio": null, "imgData": null}, {"id": "f2_1", "type": "folder", "label": "蔬菜", "emoji": "🥦", "imgData": null, "color": "#D4F1C4", "children": [{"id": "f2_1_沙拉", "type": "card", "label": "沙拉", "emoji": "🥗", "audio": null, "imgData": null}, {"id": "f2_1_高麗菜", "type": "card", "label": "高麗菜", "emoji": "🥬", "audio": null, "imgData": null}, {"id": "f2_1_紅蘿蔔", "type": "card", "label": "紅蘿蔔", "emoji": "🥕", "audio": null, "imgData": null}, {"id": "f2_1_玉米", "type": "card", "label": "玉米", "emoji": "🌽", "audio": null, "imgData": null}, {"id": "f2_1_番茄", "type": "card", "label": "番茄", "emoji": "🍅", "audio": null, "imgData": null}, {"id": "f2_1_小黃瓜", "type": "card", "label": "小黃瓜", "emoji": "🥒", "audio": null, "imgData": null}, {"id": "f2_1_花椰菜", "type": "card", "label": "花椰菜", "emoji": "🥦", "audio": null, "imgData": null}, {"id": "f2_1_茄子", "type": "card", "label": "茄子", "emoji": "🍆", "audio": null, "imgData": null}, {"id": "f2_1_蒜", "type": "card", "label": "蒜", "emoji": "🧄", "audio": null, "imgData": null}, {"id": "f2_1_青椒", "type": "card", "label": "青椒", "emoji": "🫑", "audio": null, "imgData": null}, {"id": "f2_1_地瓜", "type": "card", "label": "地瓜", "emoji": "🍠", "audio": null, "imgData": null}]}, {"id": "f2_2", "type": "folder", "label": "水果", "emoji": "🍎", "imgData": null, "color": "#FFD6D6", "children": [{"id": "f2_2_蘋果", "type": "card", "label": "蘋果", "emoji": "🍎", "audio": null, "imgData": null}, {"id": "f2_2_香蕉", "type": "card", "label": "香蕉", "emoji": "🍌", "audio": null, "imgData": null}, {"id": "f2_2_鳳梨", "type": "card", "label": "鳳梨", "emoji": "🍍", "audio": null, "imgData": null}, {"id": "f2_2_草莓", "type": "card", "label": "草莓", "emoji": "🍓", "audio": null, "imgData": null}, {"id": "f2_2_西瓜", "type": "card", "label": "西瓜", "emoji": "🍉", "audio": null, "imgData": null}, {"id": "f2_2_水蜜桃", "type": "card", "label": "水蜜桃", "emoji": "🍑", "audio": null, "imgData": null}, {"id": "f2_2_葡萄", "type": "card", "label": "葡萄", "emoji": "🍇", "audio": null, "imgData": null}, {"id": "f2_2_藍莓", "type": "card", "label": "藍莓", "emoji": "🫐", "audio": null, "imgData": null}, {"id": "f2_2_檸檬", "type": "card", "label": "檸檬", "emoji": "🍋", "audio": null, "imgData": null}, {"id": "f2_2_梨子", "type": "card", "label": "梨子", "emoji": "🍐", "audio": null, "imgData": null}, {"id": "f2_2_芒果", "type": "card", "label": "芒果", "emoji": "🥭", "audio": null, "imgData": null}]}, {"id": "f2_3", "type": "folder", "label": "肉類", "emoji": "🥩", "imgData": null, "color": "#FFE4C4", "children": [{"id": "f2_3_豬肉", "type": "card", "label": "豬肉", "emoji": "🥩", "audio": null, "imgData": null}, {"id": "f2_3_雞肉", "type": "card", "label": "雞肉", "emoji": "🍗", "audio": null, "imgData": null}, {"id": "f2_3_牛肉", "type": "card", "label": "牛肉", "emoji": "🥩", "audio": null, "imgData": null}]}]}, {"id": "f3", "type": "folder", "label": "遊戲與活動", "emoji": "🎮", "imgData": null, "color": "#FFF3B0", "children": [{"id": "f3_我想要", "type": "card", "label": "我想要", "emoji": "🙋", "audio": null, "imgData": null}, {"id": "f3_去散步", "type": "card", "label": "去散步", "emoji": "🚶", "audio": null, "imgData": null}, {"id": "f3_去運動", "type": "card", "label": "去運動", "emoji": "🏃", "audio": null, "imgData": null}, {"id": "f3_騎腳踏車", "type": "card", "label": "騎腳踏車", "emoji": "🚴", "audio": null, "imgData": null}, {"id": "f3_打籃球", "type": "card", "label": "打籃球", "emoji": "🏀", "audio": null, "imgData": null}, {"id": "f3_踢足球", "type": "card", "label": "踢足球", "emoji": "⚽", "audio": null, "imgData": null}, {"id": "f3_看電視", "type": "card", "label": "看電視", "emoji": "📺", "audio": null, "imgData": null}, {"id": "f3_釣魚", "type": "card", "label": "釣魚", "emoji": "🎣", "audio": null, "imgData": null}, {"id": "f3_玩玩具", "type": "card", "label": "玩玩具", "emoji": "🪀", "audio": null, "imgData": null}]}, {"id": "f4", "type": "folder", "label": "情緒", "emoji": "😊", "imgData": null, "color": "#FFD6D6", "children": [{"id": "f4_我覺得", "type": "card", "label": "我覺得", "emoji": "💭", "audio": null, "imgData": null}, {"id": "f4_你覺得", "type": "card", "label": "你覺得", "emoji": "💭", "audio": null, "imgData": null}, {"id": "f4_很快樂", "type": "card", "label": "很快樂", "emoji": "😄", "audio": null, "imgData": null}, {"id": "f4_很難過", "type": "card", "label": "很難過", "emoji": "😢", "audio": null, "imgData": null}, {"id": "f4_很傷心", "type": "card", "label": "很傷心", "emoji": "😭", "audio": null, "imgData": null}, {"id": "f4_很生氣", "type": "card", "label": "很生氣", "emoji": "😡", "audio": null, "imgData": null}, {"id": "f4_很害羞", "type": "card", "label": "很害羞", "emoji": "😳", "audio": null, "imgData": null}, {"id": "f4_很興奮", "type": "card", "label": "很興奮", "emoji": "🤩", "audio": null, "imgData": null}]}, {"id": "f5", "type": "folder", "label": "身體感覺", "emoji": "🤕", "imgData": null, "color": "#D6D0FF", "children": [{"id": "f5_我覺得", "type": "card", "label": "我覺得", "emoji": "💭", "audio": null, "imgData": null}, {"id": "f5_很痛", "type": "card", "label": "很痛", "emoji": "🤕", "audio": null, "imgData": null}, {"id": "f5_很癢", "type": "card", "label": "很癢", "emoji": "🤧", "audio": null, "imgData": null}, {"id": "f5_發燒", "type": "card", "label": "發燒", "emoji": "🤒", "audio": null, "imgData": null}, {"id": "f5_頭痛", "type": "card", "label": "頭痛", "emoji": "🤕", "audio": null, "imgData": null}, {"id": "f5_肚子痛", "type": "card", "label": "肚子痛", "emoji": "🤢", "audio": null, "imgData": null}, {"id": "f5_肚子", "type": "card", "label": "肚子", "emoji": "🤢", "audio": null, "imgData": null}, {"id": "f5_腰", "type": "card", "label": "腰", "emoji": "🧍", "audio": null, "imgData": null}, {"id": "f5_手", "type": "card", "label": "手", "emoji": "🤚", "audio": null, "imgData": null}, {"id": "f5_腳", "type": "card", "label": "腳", "emoji": "🦶", "audio": null, "imgData": null}, {"id": "f5_眼睛", "type": "card", "label": "眼睛", "emoji": "👁️", "audio": null, "imgData": null}, {"id": "f5_鼻子", "type": "card", "label": "鼻子", "emoji": "👃", "audio": null, "imgData": null}, {"id": "f5_嘴巴", "type": "card", "label": "嘴巴", "emoji": "👄", "audio": null, "imgData": null}, {"id": "f5_舌頭", "type": "card", "label": "舌頭", "emoji": "👅", "audio": null, "imgData": null}, {"id": "f5_牙齒", "type": "card", "label": "牙齒", "emoji": "🦷", "audio": null, "imgData": null}, {"id": "f5_肩膀", "type": "card", "label": "肩膀", "emoji": "💪", "audio": null, "imgData": null}]}, {"id": "f6", "type": "folder", "label": "人物", "emoji": "👨‍👩‍👧", "imgData": null, "color": "#FFD6F0", "children": [{"id": "f6_爸爸", "type": "card", "label": "爸爸", "emoji": "👨", "audio": null, "imgData": null}, {"id": "f6_媽媽", "type": "card", "label": "媽媽", "emoji": "👩", "audio": null, "imgData": null}, {"id": "f6_奶奶", "type": "card", "label": "奶奶", "emoji": "👵", "audio": null, "imgData": null}, {"id": "f6_爺爺", "type": "card", "label": "爺爺", "emoji": "👴", "audio": null, "imgData": null}, {"id": "f6_哥哥", "type": "card", "label": "哥哥", "emoji": "👦", "audio": null, "imgData": null}, {"id": "f6_姊姊", "type": "card", "label": "姊姊", "emoji": "👧", "audio": null, "imgData": null}, {"id": "f6_老師", "type": "card", "label": "老師", "emoji": "👩‍🏫", "audio": null, "imgData": null}, {"id": "f6_醫生", "type": "card", "label": "醫生", "emoji": "👨‍⚕️", "audio": null, "imgData": null}, {"id": "f6_護理師", "type": "card", "label": "護理師", "emoji": "👩‍⚕️", "audio": null, "imgData": null}]}, {"id": "f7", "type": "folder", "label": "描述", "emoji": "💬", "imgData": null, "color": "#E0E0E0", "children": [{"id": "f7_我是", "type": "card", "label": "我是", "emoji": "🙋", "audio": null, "imgData": null}, {"id": "f7_你是", "type": "card", "label": "你是", "emoji": "👉", "audio": null, "imgData": null}, {"id": "f7_他是", "type": "card", "label": "他是", "emoji": "👤", "audio": null, "imgData": null}, {"id": "f7_漂亮的", "type": "card", "label": "漂亮的", "emoji": "✨", "audio": null, "imgData": null}, {"id": "f7_安靜的", "type": "card", "label": "安靜的", "emoji": "🤫", "audio": null, "imgData": null}, {"id": "f7_吵鬧的", "type": "card", "label": "吵鬧的", "emoji": "📢", "audio": null, "imgData": null}, {"id": "f7_新的", "type": "card", "label": "新的", "emoji": "🆕", "audio": null, "imgData": null}, {"id": "f7_舊的", "type": "card", "label": "舊的", "emoji": "♻️", "audio": null, "imgData": null}, {"id": "f7_1", "type": "folder", "label": "顏色", "emoji": "🎨", "imgData": null, "color": "#FFE4C4", "children": [{"id": "f7_1_紅色", "type": "card", "label": "紅色", "emoji": "🔴", "audio": null, "imgData": null}, {"id": "f7_1_黃色", "type": "card", "label": "黃色", "emoji": "🟡", "audio": null, "imgData": null}, {"id": "f7_1_藍色", "type": "card", "label": "藍色", "emoji": "🔵", "audio": null, "imgData": null}, {"id": "f7_1_綠色", "type": "card", "label": "綠色", "emoji": "🟢", "audio": null, "imgData": null}, {"id": "f7_1_橘色", "type": "card", "label": "橘色", "emoji": "🟠", "audio": null, "imgData": null}, {"id": "f7_1_紫色", "type": "card", "label": "紫色", "emoji": "🟣", "audio": null, "imgData": null}, {"id": "f7_1_白色", "type": "card", "label": "白色", "emoji": "⚪", "audio": null, "imgData": null}, {"id": "f7_1_黑色", "type": "card", "label": "黑色", "emoji": "⚫", "audio": null, "imgData": null}]}, {"id": "f7_2", "type": "folder", "label": "形狀", "emoji": "🔷", "imgData": null, "color": "#C4E8FF", "children": [{"id": "f7_2_圓形", "type": "card", "label": "圓形", "emoji": "⭕", "audio": null, "imgData": null}, {"id": "f7_2_正方形", "type": "card", "label": "正方形", "emoji": "🟦", "audio": null, "imgData": null}, {"id": "f7_2_愛心", "type": "card", "label": "愛心", "emoji": "❤️", "audio": null, "imgData": null}, {"id": "f7_2_星星", "type": "card", "label": "星星", "emoji": "⭐", "audio": null, "imgData": null}, {"id": "f7_2_三角形", "type": "card", "label": "三角形", "emoji": "🔺", "audio": null, "imgData": null}]}]}, {"id": "f8", "type": "folder", "label": "天氣", "emoji": "☀️", "imgData": null, "color": "#FFF3B0", "children": [{"id": "f8_太陽", "type": "card", "label": "太陽", "emoji": "☀️", "audio": null, "imgData": null}, {"id": "f8_下雨", "type": "card", "label": "下雨", "emoji": "🌧️", "audio": null, "imgData": null}, {"id": "f8_陰天", "type": "card", "label": "陰天", "emoji": "☁️", "audio": null, "imgData": null}, {"id": "f8_打雷", "type": "card", "label": "打雷", "emoji": "⛈️", "audio": null, "imgData": null}, {"id": "f8_下雪", "type": "card", "label": "下雪", "emoji": "❄️", "audio": null, "imgData": null}, {"id": "f8_颱風", "type": "card", "label": "颱風", "emoji": "🌀", "audio": null, "imgData": null}]}, {"id": "f9", "type": "folder", "label": "交通", "emoji": "🚗", "imgData": null, "color": "#D4F1C4", "children": [{"id": "f9_汽車", "type": "card", "label": "汽車", "emoji": "🚗", "audio": null, "imgData": null}, {"id": "f9_火車", "type": "card", "label": "火車", "emoji": "🚂", "audio": null, "imgData": null}, {"id": "f9_機車", "type": "card", "label": "機車", "emoji": "🛵", "audio": null, "imgData": null}, {"id": "f9_公車", "type": "card", "label": "公車", "emoji": "🚌", "audio": null, "imgData": null}, {"id": "f9_船", "type": "card", "label": "船", "emoji": "🚢", "audio": null, "imgData": null}, {"id": "f9_腳踏車", "type": "card", "label": "腳踏車", "emoji": "🚲", "audio": null, "imgData": null}, {"id": "f9_捷運", "type": "card", "label": "捷運", "emoji": "🚇", "audio": null, "imgData": null}, {"id": "f9_飛機", "type": "card", "label": "飛機", "emoji": "✈️", "audio": null, "imgData": null}]}, {"id": "f10", "type": "folder", "label": "場所", "emoji": "📍", "imgData": null, "color": "#FFD6D6", "children": [{"id": "f10_家裡", "type": "card", "label": "家裡", "emoji": "🏠", "audio": null, "imgData": null}, {"id": "f10_學校", "type": "card", "label": "學校", "emoji": "🏫", "audio": null, "imgData": null}, {"id": "f10_醫院", "type": "card", "label": "醫院", "emoji": "🏥", "audio": null, "imgData": null}, {"id": "f10_餐廳", "type": "card", "label": "餐廳", "emoji": "🍽️", "audio": null, "imgData": null}, {"id": "f10_超商", "type": "card", "label": "超商", "emoji": "🏪", "audio": null, "imgData": null}, {"id": "f10_公園", "type": "card", "label": "公園", "emoji": "🌳", "audio": null, "imgData": null}, {"id": "f10_海邊", "type": "card", "label": "海邊", "emoji": "🏖️", "audio": null, "imgData": null}, {"id": "f10_山上", "type": "card", "label": "山上", "emoji": "⛰️", "audio": null, "imgData": null}]}, {"id": "f11", "type": "folder", "label": "時間", "emoji": "⏰", "imgData": null, "color": "#E8EEFB", "children": [{"id": "f11_今天", "type": "card", "label": "今天", "emoji": "📅", "audio": null, "imgData": null}, {"id": "f11_早上", "type": "card", "label": "早上", "emoji": "🌅", "audio": null, "imgData": null}, {"id": "f11_中午", "type": "card", "label": "中午", "emoji": "🌞", "audio": null, "imgData": null}, {"id": "f11_晚上", "type": "card", "label": "晚上", "emoji": "🌙", "audio": null, "imgData": null}]}]};
+let state={path:[],boardTitle:'AAC 溝通板',tree:JSON.parse(JSON.stringify(DEFAULT_TREE)),sentence:[],editTarget:null,modalMode:null,tempAudio:null,tempImg:null,tempEmoji:DEFAULT_EMOJI};
 function uid(){return 'id'+Math.random().toString(36).slice(2)}
-function currentFolder(){let node=state.tree;for(let id of state.path)node=node.children.find(c=>c.id===id);return node;}
-const boardTitleEl=document.getElementById('board-title');
-const titleEditWrap=document.getElementById('title-edit-wrap');
-const titleInput=document.getElementById('title-input');
-const titleChar=document.getElementById('title-char');
+function currentFolder(){let node=state.tree;for(const id of state.path)node=node.children.find(c=>c.id===id);return node;}
+function shadeColor(hex,pct){const n=parseInt(hex.slice(1),16);const r=Math.min(255,Math.max(0,((n>>16)&0xff)+pct));const g=Math.min(255,Math.max(0,((n>>8)&0xff)+pct));const b=Math.min(255,Math.max(0,(n&0xff)+pct));return'#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+document.getElementById('btn-export').onclick=()=>{const data={boardTitle:state.boardTitle,tree:state.tree,exportTime:new Date().toLocaleString('zh-TW')};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='aac_data.json';a.click();URL.revokeObjectURL(url);showToast('✅ 已匯出 aac_data.json');};
+document.getElementById('f-import').onchange=function(){const file=this.files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data.tree)throw new Error();state.boardTitle=data.boardTitle||'AAC 溝通板';state.tree=data.tree;state.path=[];document.getElementById('board-title').textContent=state.boardTitle;render();showToast('✅ 匯入成功！');}catch{showToast('❌ 檔案格式錯誤');}};reader.readAsText(file);this.value='';};
+const boardTitleEl=document.getElementById('board-title');const titleEditWrap=document.getElementById('title-edit-wrap');const titleInput=document.getElementById('title-input');const titleChar=document.getElementById('title-char');
 boardTitleEl.onclick=()=>{titleInput.value=state.boardTitle;titleChar.textContent=state.boardTitle.length+'/20';boardTitleEl.style.display='none';titleEditWrap.classList.add('visible');titleInput.focus();titleInput.select();};
 titleInput.oninput=()=>{titleChar.textContent=titleInput.value.length+'/20';};
-document.getElementById('btn-title-save').onclick=saveTitle;
-document.getElementById('btn-title-cancel').onclick=cancelTitle;
+document.getElementById('btn-title-save').onclick=saveTitle;document.getElementById('btn-title-cancel').onclick=cancelTitle;
 titleInput.onkeydown=e=>{if(e.key==='Enter')saveTitle();if(e.key==='Escape')cancelTitle();};
 function saveTitle(){const v=titleInput.value.trim();if(v)state.boardTitle=v;boardTitleEl.textContent=state.boardTitle;boardTitleEl.style.display='';titleEditWrap.classList.remove('visible');}
 function cancelTitle(){boardTitleEl.style.display='';titleEditWrap.classList.remove('visible');}
 function setFontSize(fs,btn){const m=FS_MAP[fs],r=document.documentElement.style;r.setProperty('--fs-label',m.label);r.setProperty('--card-img',m.img);r.setProperty('--card-emoji',m.emoji);r.setProperty('--card-min-h',m.minh);document.querySelectorAll('.fs-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
 function setEditMode(on){editMode=on;document.body.classList.toggle('edit-mode',on);document.getElementById('edit-mode-bar').classList.toggle('visible',on);const eb=document.getElementById('btn-edit-mode');eb.style.background=on?'var(--primary-light)':'';eb.style.color=on?'var(--primary)':'';}
-document.getElementById('btn-edit-mode').onclick=()=>setEditMode(!editMode);
-document.getElementById('btn-exit-edit').onclick=()=>setEditMode(false);
-function renderBreadcrumb(){
-  const el=document.getElementById('breadcrumb'),atRoot=state.path.length===0;
-  ['btn-home','btn-back'].forEach(id=>{const b=document.getElementById(id);b.disabled=atRoot;b.style.opacity=atRoot?'0.4':'1';});
-  let parts=[{label:'首頁',idx:-1}],node=state.tree;
-  for(let i=0;i<state.path.length;i++){node=node.children.find(c=>c.id===state.path[i]);parts.push({label:node.label,idx:i});}
-  el.innerHTML=parts.map((p,i)=>{if(i===parts.length-1)return`<span style="color:var(--text)">${p.label}</span>`;return`<span class="link" onclick="navTo(${p.idx})">${p.label}</span><span class="sep">›</span>`;}).join('');
-}
+document.getElementById('btn-edit-mode').onclick=()=>setEditMode(!editMode);document.getElementById('btn-exit-edit').onclick=()=>setEditMode(false);
+function renderBreadcrumb(){const el=document.getElementById('breadcrumb'),atRoot=state.path.length===0;['btn-home','btn-back'].forEach(id=>{const b=document.getElementById(id);b.disabled=atRoot;b.style.opacity=atRoot?'0.4':'1';});let parts=[{label:'首頁',idx:-1}],node=state.tree;for(let i=0;i<state.path.length;i++){node=node.children.find(c=>c.id===state.path[i]);parts.push({label:node.label,idx:i});}el.innerHTML=parts.map((p,i)=>{if(i===parts.length-1)return`<span style="color:var(--text)">${p.label}</span>`;return`<span class="link" onclick="navTo(${p.idx})">${p.label}</span><span class="sep">›</span>`;}).join('');}
 function navTo(idx){state.path=state.path.slice(0,idx+1);render();}
-document.getElementById('btn-home').onclick=()=>{state.path=[];render();};
-document.getElementById('btn-back').onclick=()=>{if(state.path.length>0){state.path.pop();render();}};
-function shadeColor(hex,pct){const n=parseInt(hex.slice(1),16);const r=Math.min(255,Math.max(0,((n>>16)&0xff)+pct));const g=Math.min(255,Math.max(0,((n>>8)&0xff)+pct));const b=Math.min(255,Math.max(0,(n&0xff)+pct));return'#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
-function render(){
-  renderBreadcrumb();renderSentence();
-  const folder=currentFolder(),grid=document.getElementById('grid');
-  grid.innerHTML='';
-  (folder.children||[]).forEach(item=>{
-    const div=document.createElement('div');
-    div.className='card'+(item.type==='folder'?' folder':'');
-    div.dataset.id=item.id;
-    if(item.type==='folder'&&item.color){div.style.background=item.color;div.style.borderColor=shadeColor(item.color,-20);}
-    const visual=item.imgData?`<img class="card-img" src="${item.imgData}">`:`<div class="card-emoji">${item.emoji||DEFAULT_EMOJI}</div>`;
-    div.innerHTML=`<div class="drag-handle" title="拖曳排序">⠿</div><div class="card-edit-overlay"></div>${visual}<div class="card-label">${item.label}</div><div class="card-edit-btns"><button class="btn ghost" style="font-size:12px;padding:4px 10px" onclick="editItem('${item.id}',event)">✎ 編輯</button><button class="btn danger-outline" style="font-size:12px;padding:4px 10px" onclick="confirmDelete('${item.id}','${item.label}',event)">✕ 刪除</button></div>`;
-    div.setAttribute('draggable','true');
-    div.addEventListener('dragstart',e=>{if(!editMode){e.preventDefault();return;}dragSrcId=item.id;div.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
-    div.addEventListener('dragend',()=>{div.classList.remove('dragging');document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));});
-    div.addEventListener('dragover',e=>{if(!editMode||dragSrcId===item.id)return;e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));div.classList.add('drag-over');});
-    div.addEventListener('dragleave',()=>div.classList.remove('drag-over'));
-    div.addEventListener('drop',e=>{if(!editMode||dragSrcId===item.id)return;e.preventDefault();div.classList.remove('drag-over');const children=currentFolder().children;const fromIdx=children.findIndex(c=>c.id===dragSrcId);const toIdx=children.findIndex(c=>c.id===item.id);if(fromIdx<0||toIdx<0)return;const[moved]=children.splice(fromIdx,1);children.splice(toIdx,0,moved);dragSrcId=null;render();});
-    div.addEventListener('click',()=>{if(!editMode)handleCardClick(item);});
-    grid.appendChild(div);
-  });
-}
+document.getElementById('btn-home').onclick=()=>{state.path=[];render();};document.getElementById('btn-back').onclick=()=>{if(state.path.length>0){state.path.pop();render();}};
+function render(){renderBreadcrumb();renderSentence();const folder=currentFolder(),grid=document.getElementById('grid');grid.innerHTML='';(folder.children||[]).forEach(item=>{const div=document.createElement('div');div.className='card'+(item.type==='folder'?' folder':'');div.dataset.id=item.id;if(item.type==='folder'&&item.color){div.style.background=item.color;div.style.borderColor=shadeColor(item.color,-20);}const visual=item.imgData?`<img class="card-img" src="${item.imgData}">`:`<div class="card-emoji">${item.emoji||DEFAULT_EMOJI}</div>`;div.innerHTML=`<div class="drag-handle" title="拖曳排序">⠿</div><div class="card-edit-overlay"></div>${visual}<div class="card-label">${item.label}</div><div class="card-edit-btns"><button class="btn ghost" style="font-size:12px;padding:4px 10px" onclick="editItem('${item.id}',event)">✎ 編輯</button><button class="btn danger-outline" style="font-size:12px;padding:4px 10px" onclick="confirmDelete('${item.id}','${item.label}',event)">✕ 刪除</button></div>`;div.setAttribute('draggable','true');div.addEventListener('dragstart',e=>{if(!editMode){e.preventDefault();return;}dragSrcId=item.id;div.classList.add('dragging');e.dataTransfer.effectAllowed='move';});div.addEventListener('dragend',()=>{div.classList.remove('dragging');document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));});div.addEventListener('dragover',e=>{if(!editMode||dragSrcId===item.id)return;e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));div.classList.add('drag-over');});div.addEventListener('dragleave',()=>div.classList.remove('drag-over'));div.addEventListener('drop',e=>{if(!editMode||dragSrcId===item.id)return;e.preventDefault();div.classList.remove('drag-over');const children=currentFolder().children;const fromIdx=children.findIndex(c=>c.id===dragSrcId);const toIdx=children.findIndex(c=>c.id===item.id);if(fromIdx<0||toIdx<0)return;const[moved]=children.splice(fromIdx,1);children.splice(toIdx,0,moved);dragSrcId=null;render();});div.addEventListener('click',()=>{if(!editMode)handleCardClick(item);});grid.appendChild(div);});}
 function renderSentence(){const el=document.getElementById('sentence-tokens');el.innerHTML=state.sentence.map((t,i)=>`<span class="token">${t}<button onclick="removeToken(${i})">×</button></span>`).join('');}
 function handleCardClick(item){if(item.type==='folder'){state.path.push(item.id);render();}else{state.sentence.push(item.label);renderSentence();speak(item);}}
 function speak(item){if(item.audio){new Audio(item.audio).play();}else if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(item.label);u.lang='zh-TW';speechSynthesis.speak(u);}}
 function removeToken(i){state.sentence.splice(i,1);renderSentence();}
-document.getElementById('btn-clear-sentence').onclick=()=>{state.sentence=[];renderSentence();};
-document.getElementById('btn-speak-sentence').onclick=()=>{const text=state.sentence.join('，');if(!text)return;if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(text);u.lang='zh-TW';speechSynthesis.speak(u);}};
-document.getElementById('btn-new-folder').onclick=()=>openModal('folder');
-document.getElementById('btn-new-card').onclick=()=>openModal('card');
-const fLabel=document.getElementById('f-label');
-let emojiTimer=null;
-fLabel.oninput=()=>{
-  if(state.tempImg)return;
-  clearTimeout(emojiTimer);
-  emojiTimer=setTimeout(()=>{
-    const emoji=lookupEmoji(fLabel.value);
-    state.tempEmoji=emoji;
-    document.getElementById('emoji-preview-big').textContent=emoji;
-    const found=emoji!==DEFAULT_EMOJI;
-    document.getElementById('emoji-status-label').textContent=found?'自動對應成功':'找不到對應，顯示為 ❓';
-    document.getElementById('emoji-status-value').textContent=fLabel.value.trim()?`「${fLabel.value.trim()}」→ ${emoji}`:'';
-  },300);
-};
+document.getElementById('btn-clear-sentence').onclick=()=>{state.sentence=[];renderSentence();};document.getElementById('btn-speak-sentence').onclick=()=>{const text=state.sentence.join('，');if(!text)return;if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(text);u.lang='zh-TW';speechSynthesis.speak(u);}};
+document.getElementById('btn-new-folder').onclick=()=>openModal('folder');document.getElementById('btn-new-card').onclick=()=>openModal('card');
+const fLabel=document.getElementById('f-label');let emojiTimer=null;
+fLabel.oninput=()=>{if(state.tempImg)return;clearTimeout(emojiTimer);emojiTimer=setTimeout(()=>{const emoji=lookupEmoji(fLabel.value);state.tempEmoji=emoji;document.getElementById('emoji-preview-big').textContent=emoji;const found=emoji!==DEFAULT_EMOJI;document.getElementById('emoji-status-label').textContent=found?'自動對應成功':'找不到對應，顯示為 ❓';document.getElementById('emoji-status-value').textContent=fLabel.value.trim()?`「${fLabel.value.trim()}」→ ${emoji}`:'';},300);};
 function buildColorGrid(c0){const grid=document.getElementById('color-grid');grid.innerHTML='';selectedColor=c0||FOLDER_COLORS[4];FOLDER_COLORS.forEach(c=>{const sw=document.createElement('div');sw.className='color-swatch'+(c===selectedColor?' selected':'');sw.style.background=c;sw.onclick=()=>{selectedColor=c;document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));sw.classList.add('selected');};grid.appendChild(sw);});}
-function openModal(mode,item){
-  state.modalMode=mode;state.editTarget=item||null;state.tempAudio=item?.audio||null;state.tempImg=item?.imgData||null;
-  state.tempEmoji=item?.emoji||DEFAULT_EMOJI;
-  document.getElementById('modal-title').textContent=item?(mode==='folder'?'編輯資料夾':'編輯圖卡'):(mode==='folder'?'新增資料夾':'新增圖卡');
-  fLabel.value=item?.label||'';
-  document.getElementById('fg-color').style.display=mode==='folder'?'':'none';
-  document.getElementById('fg-audio').style.display=mode==='folder'?'none':'';
-  if(mode==='folder')buildColorGrid(item?.color||FOLDER_COLORS[4]);
-  document.getElementById('emoji-preview-big').textContent=state.tempEmoji;
-  document.getElementById('emoji-status-label').textContent=item?'目前圖示':'輸入名稱後自動對應';
-  document.getElementById('emoji-status-value').textContent=item?`「${item.label}」→ ${state.tempEmoji}`:'';
-  const prevWrap=document.getElementById('img-preview-wrap');
-  if(state.tempImg){document.getElementById('img-preview').src=state.tempImg;prevWrap.style.display='flex';}else prevWrap.style.display='none';
-  updateAudioLabel();
-  document.getElementById('modal').style.display='flex';
-  setTimeout(()=>fLabel.focus(),50);
-}
+function openModal(mode,item){state.modalMode=mode;state.editTarget=item||null;state.tempAudio=item?.audio||null;state.tempImg=item?.imgData||null;state.tempEmoji=item?.emoji||DEFAULT_EMOJI;document.getElementById('modal-title').textContent=item?(mode==='folder'?'編輯資料夾':'編輯圖卡'):(mode==='folder'?'新增資料夾':'新增圖卡');fLabel.value=item?.label||'';document.getElementById('fg-color').style.display=mode==='folder'?'':'none';document.getElementById('fg-audio').style.display=mode==='folder'?'none':'';if(mode==='folder')buildColorGrid(item?.color||FOLDER_COLORS[4]);document.getElementById('emoji-preview-big').textContent=state.tempEmoji;document.getElementById('emoji-status-label').textContent=item?'目前圖示':'輸入名稱後自動對應';document.getElementById('emoji-status-value').textContent=item?`「${item.label}」→ ${state.tempEmoji}`:'';const prevWrap=document.getElementById('img-preview-wrap');if(state.tempImg){document.getElementById('img-preview').src=state.tempImg;prevWrap.style.display='flex';}else prevWrap.style.display='none';updateAudioLabel();document.getElementById('modal').style.display='flex';setTimeout(()=>fLabel.focus(),50);}
 function updateAudioLabel(){const fname=document.getElementById('audio-fname'),pbtn=document.getElementById('btn-preview-audio');if(state.tempAudio){fname.textContent='已載入語音檔案';pbtn.style.display='inline-flex';}else{fname.textContent='尚未選擇（將使用語音合成）';pbtn.style.display='none';}}
 document.getElementById('f-img').onchange=function(){const file=this.files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{state.tempImg=e.target.result;document.getElementById('img-preview').src=state.tempImg;document.getElementById('img-preview-wrap').style.display='flex';};reader.readAsDataURL(file);};
 document.getElementById('btn-remove-img').onclick=()=>{state.tempImg=null;document.getElementById('f-img').value='';document.getElementById('img-preview-wrap').style.display='none';const emoji=lookupEmoji(fLabel.value);state.tempEmoji=emoji;document.getElementById('emoji-preview-big').textContent=emoji;};
 document.getElementById('f-audio').onchange=function(){const file=this.files[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{state.tempAudio=e.target.result;updateAudioLabel();};reader.readAsDataURL(file);};
-document.getElementById('btn-clear-audio').onclick=()=>{state.tempAudio=null;updateAudioLabel();};
-document.getElementById('btn-preview-audio').onclick=()=>{if(state.tempAudio)new Audio(state.tempAudio).play();};
-document.getElementById('modal-cancel').onclick=closeModal;
-document.getElementById('modal').onclick=e=>{if(e.target===document.getElementById('modal'))closeModal();};
+document.getElementById('btn-clear-audio').onclick=()=>{state.tempAudio=null;updateAudioLabel();};document.getElementById('btn-preview-audio').onclick=()=>{if(state.tempAudio)new Audio(state.tempAudio).play();};
+document.getElementById('modal-cancel').onclick=closeModal;document.getElementById('modal').onclick=e=>{if(e.target===document.getElementById('modal'))closeModal();};
 function closeModal(){document.getElementById('modal').style.display='none';document.getElementById('f-img').value='';document.getElementById('f-audio').value='';}
-document.getElementById('modal-save').onclick=()=>{
-  const label=fLabel.value.trim();if(!label){fLabel.focus();return;}
-  const folder=currentFolder();
-  if(state.editTarget){const item=findById(state.tree,state.editTarget.id);item.label=label;item.emoji=state.tempEmoji;item.imgData=state.tempImg;if(state.modalMode==='folder')item.color=selectedColor;if(state.modalMode==='card')item.audio=state.tempAudio;}
-  else{folder.children.push({id:uid(),type:state.modalMode,label,emoji:state.tempEmoji,imgData:state.tempImg,color:state.modalMode==='folder'?selectedColor:undefined,children:state.modalMode==='folder'?[]:undefined,audio:state.modalMode==='card'?state.tempAudio:undefined});}
-  closeModal();render();
-};
+document.getElementById('modal-save').onclick=()=>{const label=fLabel.value.trim();if(!label){fLabel.focus();return;}const folder=currentFolder();if(state.editTarget){const item=findById(state.tree,state.editTarget.id);item.label=label;item.emoji=state.tempEmoji;item.imgData=state.tempImg;if(state.modalMode==='folder')item.color=selectedColor;if(state.modalMode==='card')item.audio=state.tempAudio;}else{folder.children.push({id:uid(),type:state.modalMode,label,emoji:state.tempEmoji,imgData:state.tempImg,color:state.modalMode==='folder'?selectedColor:undefined,children:state.modalMode==='folder'?[]:undefined,audio:state.modalMode==='card'?state.tempAudio:undefined});}closeModal();render();};
 function confirmDelete(id,label,e){e.stopPropagation();deleteTargetId=id;document.getElementById('confirm-msg').textContent=`確定要刪除「${label}」嗎？此動作無法復原。`;document.getElementById('confirm-modal').style.display='flex';}
-document.getElementById('confirm-cancel').onclick=()=>{document.getElementById('confirm-modal').style.display='none';deleteTargetId=null;};
-document.getElementById('confirm-ok').onclick=()=>{if(deleteTargetId){const parent=findParent(state.tree,deleteTargetId);if(parent)parent.children=parent.children.filter(c=>c.id!==deleteTargetId);deleteTargetId=null;}document.getElementById('confirm-modal').style.display='none';render();};
+document.getElementById('confirm-cancel').onclick=()=>{document.getElementById('confirm-modal').style.display='none';deleteTargetId=null;};document.getElementById('confirm-ok').onclick=()=>{if(deleteTargetId){const parent=findParent(state.tree,deleteTargetId);if(parent)parent.children=parent.children.filter(c=>c.id!==deleteTargetId);deleteTargetId=null;}document.getElementById('confirm-modal').style.display='none';render();};
 function editItem(id,e){e.stopPropagation();const item=findById(state.tree,id);openModal(item.type,item);}
 function findById(node,id){if(node.id===id)return node;if(node.children)for(const c of node.children){const f=findById(c,id);if(f)return f;}return null;}
 function findParent(tree,id){if(tree.children){for(const c of tree.children){if(c.id===id)return tree;const f=findParent(c,id);if(f)return f;}}return null;}
 render();
 </script>
+</body>
+</html>
