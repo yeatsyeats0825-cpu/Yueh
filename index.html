@@ -221,9 +221,57 @@ document.getElementById('btn-home').onclick=()=>{state.path=[];render();};docume
 function render(){renderBreadcrumb();renderSentence();const folder=currentFolder(),grid=document.getElementById('grid');grid.innerHTML='';(folder.children||[]).forEach(item=>{const div=document.createElement('div');div.className='card'+(item.type==='folder'?' folder':'');div.dataset.id=item.id;if(item.type==='folder'&&item.color){div.style.background=item.color;div.style.borderColor=shadeColor(item.color,-20);}const visual=item.imgData?`<img class="card-img" src="${item.imgData}">`:`<div class="card-emoji">${item.emoji||DEFAULT_EMOJI}</div>`;div.innerHTML=`<div class="drag-handle" title="拖曳排序">⠿</div><div class="card-edit-overlay"></div>${visual}<div class="card-label">${item.label}</div><div class="card-edit-btns"><button class="btn ghost" style="font-size:12px;padding:4px 10px" onclick="editItem('${item.id}',event)">✎ 編輯</button><button class="btn danger-outline" style="font-size:12px;padding:4px 10px" onclick="confirmDelete('${item.id}','${item.label}',event)">✕ 刪除</button></div>`;div.setAttribute('draggable','true');div.addEventListener('dragstart',e=>{if(!editMode){e.preventDefault();return;}dragSrcId=item.id;div.classList.add('dragging');e.dataTransfer.effectAllowed='move';});div.addEventListener('dragend',()=>{div.classList.remove('dragging');document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));});div.addEventListener('dragover',e=>{if(!editMode||dragSrcId===item.id)return;e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));div.classList.add('drag-over');});div.addEventListener('dragleave',()=>div.classList.remove('drag-over'));div.addEventListener('drop',e=>{if(!editMode||dragSrcId===item.id)return;e.preventDefault();div.classList.remove('drag-over');const children=currentFolder().children;const fromIdx=children.findIndex(c=>c.id===dragSrcId);const toIdx=children.findIndex(c=>c.id===item.id);if(fromIdx<0||toIdx<0)return;const[moved]=children.splice(fromIdx,1);children.splice(toIdx,0,moved);dragSrcId=null;render();});div.addEventListener('click',()=>{if(!editMode)handleCardClick(item);});grid.appendChild(div);});}
 function renderSentence(){const el=document.getElementById('sentence-tokens');el.innerHTML=state.sentence.map((t,i)=>`<span class="token">${t}<button onclick="removeToken(${i})">×</button></span>`).join('');}
 function handleCardClick(item){if(item.type==='folder'){state.path.push(item.id);render();}else{state.sentence.push(item.label);renderSentence();speak(item);}}
-function speak(item){if(item.audio){new Audio(item.audio).play();}else if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(item.label);u.lang='zh-TW';speechSynthesis.speak(u);}}
+function speak(item){
+  if(item.audio){
+    const a=new Audio(item.audio);
+    a.play().catch(()=>{
+      if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(item.label);u.lang='zh-TW';speechSynthesis.speak(u);}
+    });
+    return;
+  }
+  if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(item.label);u.lang='zh-TW';speechSynthesis.speak(u);}
+}
 function removeToken(i){state.sentence.splice(i,1);renderSentence();}
-document.getElementById('btn-clear-sentence').onclick=()=>{state.sentence=[];renderSentence();};document.getElementById('btn-speak-sentence').onclick=()=>{const text=state.sentence.join('，');if(!text)return;if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(text);u.lang='zh-TW';speechSynthesis.speak(u);}};
+document.getElementById('btn-clear-sentence').onclick=()=>{state.sentence=[];renderSentence();};document.getElementById('btn-speak-sentence').onclick=()=>{
+  if(!state.sentence.length)return;
+  // 收集句子中每個詞對應的圖卡（找有音檔的）
+  function findCardByLabel(label,node){
+    if(!node.children)return null;
+    for(const ch of node.children){
+      if(ch.type==='card'&&ch.label===label)return ch;
+      if(ch.type==='folder'){const r=findCardByLabel(label,ch);if(r)return r;}
+    }
+    return null;
+  }
+  const items=state.sentence.map(label=>findCardByLabel(label,state.tree));
+  // 檢查是否所有詞都沒有音檔 → 直接整句合成
+  const hasAnyAudio=items.some(item=>item&&item.audio);
+  if(!hasAnyAudio){
+    const text=state.sentence.join('，');
+    if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(text);u.lang='zh-TW';speechSynthesis.speak(u);}
+    return;
+  }
+  // 有音檔的情況：逐一播放，有音檔的播音檔，沒有的用TTS
+  let idx=0;
+  function playNext(){
+    if(idx>=items.length)return;
+    const item=items[idx];idx++;
+    if(item&&item.audio){
+      const a=new Audio(item.audio);
+      a.onended=playNext;
+      a.play().catch(playNext);
+    } else {
+      const label=state.sentence[idx-1];
+      if('speechSynthesis' in window){
+        const u=new SpeechSynthesisUtterance(label);
+        u.lang='zh-TW';
+        u.onend=playNext;
+        speechSynthesis.speak(u);
+      } else playNext();
+    }
+  }
+  playNext();
+};
 document.getElementById('btn-new-folder').onclick=()=>openModal('folder');document.getElementById('btn-new-card').onclick=()=>openModal('card');
 const fLabel=document.getElementById('f-label');let emojiTimer=null;
 fLabel.oninput=()=>{if(state.tempImg)return;clearTimeout(emojiTimer);emojiTimer=setTimeout(()=>{const emoji=lookupEmoji(fLabel.value);state.tempEmoji=emoji;document.getElementById('emoji-preview-big').textContent=emoji;const found=emoji!==DEFAULT_EMOJI;document.getElementById('emoji-status-label').textContent=found?'自動對應成功':'找不到對應，顯示為 ❓';document.getElementById('emoji-status-value').textContent=fLabel.value.trim()?`「${fLabel.value.trim()}」→ ${emoji}`:'';},300);};
